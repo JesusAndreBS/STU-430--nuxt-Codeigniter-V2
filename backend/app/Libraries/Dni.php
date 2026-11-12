@@ -5,9 +5,9 @@ namespace App\Libraries;
 use RuntimeException;
 
 /**
- * El DNI se guarda cifrado (AES-256-CBC) para poder mostrarlo en el sistema
- * y en la tableta sin que quede en claro en la base de datos. El hash HMAC
- * sirve para buscar coincidencias exactas sin descifrar todo.
+ * Utilidades históricas de cifrado del DNI. El flujo actual guarda la
+ * identidad completa en FirmaDigital; hash() solo calcula el HMAC usado
+ * para búsquedas exactas.
  */
 class Dni
 {

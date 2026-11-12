@@ -48,6 +48,16 @@ final class FirmaDigitalTest extends CIUnitTestCase
         $this->assertNull($package['firma_base64']);
     }
 
+    public function testUnAlgoritmoDistintoEsRechazado(): void
+    {
+        $firma = FirmaDigital::crear('Juan Pérez', '12345678', self::PNG, '2026-11-12T10:00:00+00:00');
+        $envelope = json_decode($firma['cifrado'], true);
+        $envelope['algorithm'] = 'AES-256-CBC';
+
+        $this->expectException(RuntimeException::class);
+        FirmaDigital::descifrar(json_encode($envelope));
+    }
+
     public function testUnPaqueteAlteradoEsRechazado(): void
     {
         $firma = FirmaDigital::crear('Juan Pérez', '12345678', self::PNG, '2026-11-12T10:00:00+00:00');

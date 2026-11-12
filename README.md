@@ -166,7 +166,7 @@ docker compose exec backend composer install
 docker compose exec backend vendor/bin/phpunit
 ```
 
-Resultado esperado: 8 pruebas y 22 aserciones.
+Resultado esperado: 9 pruebas y 24 aserciones.
 
 ## Seguridad y operación
 

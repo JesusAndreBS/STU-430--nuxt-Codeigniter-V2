@@ -23,7 +23,7 @@ class ObtenerFirma extends BaseCommand
 
     public function run(array $params)
     {
-        $hash = trim((string) CLI::getOption('hash'));
+        $hash = strtolower(trim((string) CLI::getOption('hash')));
         $formato = strtolower(trim((string) (CLI::getOption('formato') ?: 'png')));
         $salida = trim((string) (CLI::getOption('salida') ?: ''));
 

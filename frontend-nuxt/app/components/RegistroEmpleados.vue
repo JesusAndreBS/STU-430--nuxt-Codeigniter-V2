@@ -347,7 +347,8 @@ const descargarSoloFirma = async (registro: any) => {
     const datos = registro.firma_base64 ? registro : await obtenerEmpleado(registro.id)
     if (!datos?.firma_base64) return
 
-    const binario = atob(String(datos.firma_base64).replace(/\s/g, ''))
+    const limpio = String(datos.firma_base64).replace(/^data:image\/png;base64,/, '').replace(/\s/g, '')
+    const binario = atob(limpio)
     const bytes = Uint8Array.from(binario, (caracter) => caracter.charCodeAt(0))
     const url = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }))
     const enlace = document.createElement('a')

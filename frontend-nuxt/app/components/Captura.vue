@@ -995,9 +995,9 @@ onUnmounted(() => {
   desconectar()
 })
 
-watch([conectada, () => pasoTableta.value], () => {
+watch([conectada, () => pasoTableta.value], (_nuevo, _viejo, onCleanup) => {
   const timer = setTimeout(() => enviarPantalla(), 250)
-  return () => clearTimeout(timer)
+  onCleanup(() => clearTimeout(timer))
 })
 
 const idEmpleado = computed(() => props.empleado?.id ?? null)
