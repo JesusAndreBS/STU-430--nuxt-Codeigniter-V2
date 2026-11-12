@@ -1,0 +1,58 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: stu430_db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: stu430
+      MYSQL_USER: stu430
+      MYSQL_PASSWORD: stu430pass
+      MYSQL_ROOT_PASSWORD: rootpass
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - dbdata:/var/lib/mysql
+    healthcheck:
+      # 127.0.0.1 (y no "localhost") para que el ping use TCP: durante el arranque
+      # MySQL responde por el socket antes de aceptar conexiones de red.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-prootpass"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build: ./backend
+    container_name: stu430_backend
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    environment:
+      CI_ENVIRONMENT: production
+      app.baseURL: "http://localhost:8090/"
+      database.default.hostname: db
+      database.default.database: stu430
+      database.default.username: stu430
+      database.default.password: stu430pass
+      database.default.DBDriver: MySQLi
+      database.default.port: 3306
+    volumes:
+      - ./backend/.env:/var/www/html/.env:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  phpmyadmin:
+    image: phpmyadmin:5
+    container_name: stu430_phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:80"
+    environment:
+      PMA_HOST: db
+      PMA_USER: stu430
+      PMA_PASSWORD: stu430pass
+    depends_on:
+      - db
+
+volumes:
+  dbdata:

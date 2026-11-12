@@ -1,0 +1,14 @@
+node_modules/
+dist/
+vendor/
+.env
+writable/cache/*
+writable/logs/*
+writable/debugbar/*
+writable/session/*
+!writable/**/.gitkeep
+frontend-nuxt/.nuxt/
+frontend-nuxt/.output/
+frontend-nuxt/public/wgssStuSdk.js
+.DS_Store
+firma*.png

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+    bootstrap="vendor/codeigniter4/framework/system/Test/bootstrap.php"
+    backupGlobals="false"
+    beStrictAboutOutputDuringTests="true"
+    colors="true"
+    columns="max"
+    failOnRisky="true"
+    failOnWarning="true"
+    cacheDirectory="build/.phpunit.cache"
+>
+    <testsuites>
+        <testsuite name="STU-430">
+            <directory>./tests</directory>
+        </testsuite>
+    </testsuites>
+
+    <source>
+        <include>
+            <directory suffix=".php">./app</directory>
+        </include>
+        <exclude>
+            <directory suffix=".php">./app/Views</directory>
+        </exclude>
+    </source>
+
+    <php>
+        <server name="app.baseURL" value="http://localhost:8090/"/>
+        <server name="CODEIGNITER_SCREAM_DEPRECATIONS" value="0"/>
+        <env name="HASH_SALT" value="salt-de-pruebas-unittest"/>
+        <env name="FIRMA_HASH_SALT" value="firma-salt-de-pruebas-unittest"/>
+        <env name="FIRMA_AES_KEY" value="ZgMXi3iCqaXB+uUKybiy7MFIayWc5ZvexgdrRxo/nxY="/>
+        <const name="HOMEPATH" value="./"/>
+        <const name="CONFIGPATH" value="./app/Config/"/>
+        <const name="PUBLICPATH" value="./public/"/>
+    </php>
+</phpunit>

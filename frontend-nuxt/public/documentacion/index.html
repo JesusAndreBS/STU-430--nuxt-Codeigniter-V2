@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentación STU-430</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="doc-app">
+    <aside class="doc-sidebar">
+      <header class="doc-header">
+        <h1>STU-430 Docs</h1>
+        <p class="subtitle">Sistema de Firmas</p>
+      </header>
+      <div class="search-box">
+        <input type="search" id="searchInput" placeholder="Buscar..." aria-label="Buscar en la documentación">
+        <span class="search-shortcut">⌘K</span>
+      </div>
+      <nav class="doc-nav" id="nav"></nav>
+      <footer class="doc-footer">
+        <p>Firmas STU-430</p>
+        <p class="version">v1.0.0</p>
+      </footer>
+    </aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Menú">☰</button>
+    <main class="doc-main" id="content"></main>
+  </div>
+  <div class="reading-progress" id="readingProgress"></div>
+  <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Vista ampliada">
+    <button class="lightbox-close" aria-label="Cerrar">✕</button>
+    <img id="lightboxImg" src="" alt="">
+    <div class="lightbox-caption" id="lightboxCaption"></div>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
