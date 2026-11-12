@@ -13,10 +13,11 @@ class ObtenerFirma extends BaseCommand
     protected $group = 'STU-430';
     protected $name = 'obtener-firma';
     protected $description = 'Recupera una firma digital cifrada por su hash principal.';
-    protected $usage = 'obtener-firma --hash HASH --formato png [--salida RUTA]';
+    protected $usage = 'obtener-firma --hash HASH [--json] [--formato png|jpg] [--salida RUTA]';
     protected $arguments = [];
     protected $options = [
         '--hash'    => 'Hash principal de la firma digital.',
+        '--json'    => 'Muestra el paquete descifrado completo (nombre, dni, fecha y firma_base64).',
         '--formato' => 'Formato de salida: png o jpg.',
         '--salida'  => 'Ruta opcional del archivo de salida.',
     ];
@@ -26,6 +27,7 @@ class ObtenerFirma extends BaseCommand
         $hash = strtolower(trim((string) CLI::getOption('hash')));
         $formato = strtolower(trim((string) (CLI::getOption('formato') ?: 'png')));
         $salida = trim((string) (CLI::getOption('salida') ?: ''));
+        $mostrarJson = CLI::getOption('json') !== null;
 
         if ($hash === '' || preg_match('/^[a-f0-9]{64}$/', $hash) !== 1) {
             CLI::error('El --hash debe ser un SHA-256 hexadecimal de 64 caracteres.');
@@ -45,6 +47,25 @@ class ObtenerFirma extends BaseCommand
             }
 
             $package = FirmaDigital::descifrar($firma['firma_cifrada']);
+
+            if ($mostrarJson) {
+                $json = json_encode($package, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+                if ($salida === '') {
+                    CLI::write((string) $json);
+
+                    return EXIT_SUCCESS;
+                }
+
+                if (file_put_contents($salida, $json) === false) {
+                    throw new RuntimeException('No se pudo escribir el archivo de salida.');
+                }
+
+                CLI::write('Paquete JSON escrito en: ' . $salida);
+
+                return EXIT_SUCCESS;
+            }
+
             $png = FirmaDigital::pngBinario((string) $package['firma_base64']);
             $binary = $formato === 'jpg' ? $this->convertirJpg($png) : $png;
 

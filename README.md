@@ -157,6 +157,19 @@ docker compose exec backend php spark obtener-firma \
 docker cp stu430_backend:/tmp/firma.png ./firma.png
 ```
 
+Para ver el **paquete descifrado en JSON** (nombre, DNI, fecha, mime y `firma_base64`):
+
+```bash
+# En pantalla
+docker compose exec backend php spark obtener-firma --hash HASH_DE_LA_FIRMA --json
+
+# O guardado en un archivo
+docker compose exec backend php spark obtener-firma --hash HASH_DE_LA_FIRMA --json --salida /tmp/firma.json
+docker cp stu430_backend:/tmp/firma.json ./firma.json
+```
+
+> `--json` descifra el contenido: el archivo resultante contiene datos personales **en claro**. Para respaldos, guarda el sobre cifrado (`firma_cifrada`) y no el JSON descifrado.
+
 El hash se obtiene de `firmas_digitales.firma_hash`, no del contenedor cifrado.
 
 ## Pruebas

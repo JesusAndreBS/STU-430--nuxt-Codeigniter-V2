@@ -219,6 +219,15 @@ MySQL: empleados 1 ─── 1 firmas_digitales</code></pre>
 docker cp stu430_backend:/tmp/firma.png ./firma.png</code></pre>
       <p>El hash se toma de <code>firmas_digitales.firma_hash</code>.</p>
 
+      <h3>Ver el paquete descifrado en JSON</h3>
+      <pre class="diagram" data-lang="bash"><code>docker compose exec backend php spark obtener-firma \\
+  --hash HASH_DE_LA_FIRMA --json
+
+docker compose exec backend php spark obtener-firma \\
+  --hash HASH_DE_LA_FIRMA --json --salida /tmp/firma.json
+docker cp stu430_backend:/tmp/firma.json ./firma.json</code></pre>
+      <p>Muestra <code>nombre</code>, <code>dni</code>, <code>fecha_firma</code>, <code>mime</code> y <code>firma_base64</code>. Ojo: el JSON queda en texto claro; para respaldos conserva el sobre cifrado.</p>
+
       <h3>Pruebas</h3>
       <pre class="diagram" data-lang="bash"><code>docker compose exec backend composer install
 docker compose exec backend vendor/bin/phpunit</code></pre>
