@@ -29,9 +29,6 @@
     <php>
         <server name="app.baseURL" value="http://localhost:8090/"/>
         <server name="CODEIGNITER_SCREAM_DEPRECATIONS" value="0"/>
-        <env name="HASH_SALT" value="salt-de-pruebas-unittest"/>
-        <env name="FIRMA_HASH_SALT" value="firma-salt-de-pruebas-unittest"/>
-        <env name="FIRMA_AES_KEY" value="ZgMXi3iCqaXB+uUKybiy7MFIayWc5ZvexgdrRxo/nxY="/>
         <const name="HOMEPATH" value="./"/>
         <const name="CONFIGPATH" value="./app/Config/"/>
         <const name="PUBLICPATH" value="./public/"/>

@@ -34,53 +34,32 @@ async function fetchJson(url: string, options: RequestInit = {}) {
   return json ?? {}
 }
 
-export async function listarEmpleados(q: string = '') {
-  const url = `${apiBase()}/empleados${q ? `?q=${encodeURIComponent(q)}` : ''}`
-  const json = await fetchJson(url)
+export async function listarFirmas() {
+  const json = await fetchJson(`${apiBase()}/firmas`)
   return json.data ?? []
 }
 
-export async function obtenerEmpleado(id: number) {
-  const json = await fetchJson(`${apiBase()}/empleados/${id}`)
+export async function obtenerFirma(id: number) {
+  const json = await fetchJson(`${apiBase()}/firmas/${id}`)
   return json.data
 }
 
-export async function iniciarFirma(data: { nombre: string; dni: string }) {
-  const json = await fetchJson(`${apiBase()}/firmas/iniciar`, {
+export async function registrarFirma(data: { wacom_blob: string; nombre?: string; dni?: string; fecha_firmado?: string }) {
+  const json = await fetchJson(`${apiBase()}/firmas`, {
     method: 'POST',
     body: JSON.stringify(data),
   })
   return json.data
 }
 
-export async function registrarEmpleado(data: { nombre: string; dni: string; firma_base64?: string }) {
-  const json = await fetchJson(`${apiBase()}/empleados`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  })
-  return json.data
+export async function eliminarFirma(id: number) {
+  await fetchJson(`${apiBase()}/firmas/${id}`, { method: 'DELETE' })
 }
 
-export async function actualizarEmpleado(id: number, data: { nombre: string; dni: string }) {
-  const json = await fetchJson(`${apiBase()}/empleados/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  })
-  return json.data
-}
-
-export async function guardarFirmaEmpleado(
-  id: number,
-  firma_base64: string,
-  identidad?: { nombre: string; dni: string },
-) {
-  const json = await fetchJson(`${apiBase()}/empleados/${id}/firma`, {
-    method: 'PUT',
-    body: JSON.stringify({ firma_base64, ...identidad }),
-  })
-  return json.data
-}
-
-export async function eliminarEmpleado(id: number) {
-  await fetchJson(`${apiBase()}/empleados/${id}`, { method: 'DELETE' })
+export async function descargarPngFirma(id: number): Promise<Blob> {
+  const res = await fetch(`${apiBase()}/firmas/${id}/png`)
+  if (!res.ok) {
+    throw new Error('Error al descargar la imagen')
+  }
+  return res.blob()
 }

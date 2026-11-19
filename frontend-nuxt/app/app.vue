@@ -17,18 +17,8 @@
     </header>
 
     <main class="layout">
-      <Captura
-        :empleado="empleado"
-        @saved="recargar++"
-        @cancelar="empleado = null"
-        @buscar-dni="buscarDNI = $event"
-      />
-      <RegistroEmpleados
-        :recargar="recargar"
-        @seleccionar="empleado = $event"
-        :q="buscarDNI"
-        @change-q="buscarDNI = $event"
-      />
+      <Captura @saved="recargar++" />
+      <RegistroEmpleados :recargar="recargar" />
     </main>
 
     <footer class="footer">
@@ -52,6 +42,4 @@ import RegistroEmpleados from './components/RegistroEmpleados.vue'
 import '@/assets/css/main.css'
 
 const recargar = ref(0)
-const empleado = ref<any>(null)
-const buscarDNI = ref('')
 </script>

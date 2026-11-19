@@ -1,6 +1,8 @@
 # STU-430 · Sistema de Firmas Digitales
 
-Aplicación para registrar empleados y capturar su firma con una tableta **Wacom STU-430**. La identidad se guarda cifrada, la firma se almacena como PNG dentro de un contenedor AES-256-GCM y la base de datos solo conserva hashes para búsquedas.
+Aplicación para capturar la firma de un empleado con una tableta **Wacom STU-430**. El formulario pide nombre y DNI, el adaptador Wacom genera un único `wacom_blob` y la base de datos lo guarda tal cual.
+
+Ni el frontend ni el backend cifran, descifran ni hashean datos. El backend nunca interpreta el contenido del blob; el adaptador solo lo empaqueta en base64.
 
 ## Stack
 
@@ -10,7 +12,6 @@ Aplicación para registrar empleados y capturar su firma con una tableta **Wacom
 | Backend | CodeIgniter 4.7, PHP 8.3, Apache |
 | Base de datos | MySQL 8 |
 | Tableta | Wacom STU-430 + Signature SDK + SigCaptX |
-| Cifrado | AES-256-GCM (OpenSSL) + HMAC-SHA256 |
 
 ## Estructura
 
@@ -18,13 +19,12 @@ Aplicación para registrar empleados y capturar su firma con una tableta **Wacom
 STU-430/
 ├── backend/                    API CodeIgniter 4
 │   ├── app/Controllers/Api/    Endpoints REST
-│   ├── app/Libraries/          FirmaDigital, Dni
-│   ├── app/Models/             EmpleadoModel, FirmaDigitalModel
 │   ├── app/Database/Migrations/
 │   └── tests/                  PHPUnit
 ├── frontend-nuxt/              Aplicación Nuxt
 │   ├── app/components/         Captura, RegistroEmpleados
 │   ├── app/composables/        Cliente API
+│   ├── app/wacom.js            Adaptador del SDK Wacom
 │   └── public/documentacion/   Documentación estática
 ├── Dependencias-install/       Instaladores de Wacom
 └── docker-compose.yml
@@ -49,28 +49,17 @@ Instala el SDK y SigCaptX como administrador, conecta la tableta y comprueba que
    cp backend/.env.example backend/.env
    ```
 
-2. Genera las claves y edítalas en `backend/.env`:
-
-   ```bash
-   # FIRMA_AES_KEY: 32 bytes en base64
-   openssl rand -base64 32
-
-   # FIRMA_HASH_SALT: cadena larga y aleatoria
-   openssl rand -hex 32
-   ```
-
-   `FIRMA_HASH_SALT` no debe cambiarse después de registrar empleados sin volver a ejecutar el rehash de la migración. `HASH_SALT` solo lo usan migraciones históricas.
-
-3. Levanta los servicios:
+2. Levanta los servicios:
 
    ```bash
    docker compose up -d --build
    docker compose logs -f backend
+   
    ```
 
    El contenedor aplica las migraciones al arrancar.
 
-4. Inicia el frontend:
+3. Inicia el frontend:
 
    ```bash
    cd frontend-nuxt
@@ -78,7 +67,7 @@ Instala el SDK y SigCaptX como administrador, conecta la tableta y comprueba que
    npm run dev
    ```
 
-5. Abre `http://localhost:3000`.
+4. Abre `http://localhost:3000`.
 
 | Servicio | URL |
 |---|---|
@@ -89,36 +78,28 @@ Instala el SDK y SigCaptX como administrador, conecta la tableta y comprueba que
 
 ## Modelo de datos
 
-### `empleados`
+### `firmas`
 
 | Columna | Tipo | Descripción |
 |---|---|---|
-| `id` | INT UNSIGNED | Clave primaria |
-| `dni_hash` | CHAR(64) único | HMAC-SHA256 del DNI |
-| `nombre_dni_hash` | CHAR(64) único | HMAC-SHA256 de nombre + DNI |
-| `identidad_cifrada` | LONGTEXT NOT NULL | JSON `{nombre, dni, fecha_firma, mime, firma_base64}` cifrado |
-| `created_at`, `updated_at` | DATETIME | Auditoría |
+| `id` | INT AUTO_INCREMENT | Clave primaria |
+| `wacom_blob` | TEXT NOT NULL | Blob opaco generado por el adaptador Wacom |
+| `fecha_creacion` | DATETIME | Fecha de creación (`CURRENT_TIMESTAMP`) |
 
-### `firmas_digitales`
+No se guardan nombre, DNI, trazo ni hash por separado. Todo el paquete vive dentro de `wacom_blob`.
 
-| Columna | Tipo | Descripción |
-|---|---|---|
-| `id` | INT UNSIGNED | Clave primaria |
-| `empleado_id` | INT UNSIGNED único | FK a `empleados`, `ON DELETE CASCADE` |
-| `firma_hash` | CHAR(64) único | SHA-256 de identidad + contenedor cifrado |
-| `firma_cifrada` | LONGTEXT | Contenedor AES-256-GCM |
-| `created_at` | DATETIME NOT NULL | Fecha de la firma |
+La firma no se puede editar. Para reemplazarla se crea un registro nuevo y el anterior queda como historial.
 
-No se guardan nombre, DNI ni PNG en claro. La identidad se conserva aunque el empleado esté pendiente de firma; el listado descifra solo la identidad y el detalle descifra además el PNG.
+## Flujo
 
-## Cifrado
+1. El operador escribe nombre y DNI.
+2. El empleado firma en la tableta STU-430.
+3. Al pulsar **Guardar**, el frontend llama a `wacom.capturarFirma({ nombre, dni, trazo, serial })`.
+4. El frontend envía únicamente `{ "wacom_blob": "..." }` al backend.
+5. El backend valida que no venga vacío y hace `INSERT` en `firmas`.
+6. Para consultar, el backend devuelve el `wacom_blob` tal cual; la aplicación no lo descifra. La verificación en el Wacom no está implementada.
 
-- Clave: `FIRMA_AES_KEY` (32 bytes en base64).
-- Algoritmo: AES-256-GCM.
-- AAD: `stu430-firma-digital-v1`.
-- Contenedor: `{version, algorithm, iv, tag, ciphertext}`.
-- Hash de identidad: `HMAC-SHA256(nombre_normalizado + "|" + dni_normalizado, FIRMA_HASH_SALT)`.
-- Hash de firma: `SHA-256(hash_identidad + "|" + contenedor)`.
+> Limitación: el STU-430 no cifra nombre y DNI por sí solo con esta API. El adaptador construye un contenedor `WACOM-STU430-` + base64(JSON). No es cifrado de hardware.
 
 ## API
 
@@ -126,51 +107,20 @@ Todas las rutas devuelven JSON.
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `GET` | `/api/empleados?q=` | Listado o búsqueda por nombre/DNI |
-| `GET` | `/api/empleados/:id` | Detalle con `firma_base64` |
-| `POST` | `/api/empleados` | Crear empleado; firma opcional |
-| `PUT` | `/api/empleados/:id` | Actualizar identidad; descarta la firma anterior |
-| `DELETE` | `/api/empleados/:id` | Eliminar empleado y su firma |
-| `PUT` | `/api/empleados/:id/firma` | Crear o reemplazar la firma |
-| `POST` | `/api/firmas/iniciar` | Generar JSON de entrada |
+| `GET` | `/api/firmas` | Lista `id`, `wacom_blob`, `fecha_creacion` |
+| `GET` | `/api/firmas/:id` | Devuelve el blob tal cual está en la BD |
+| `POST` | `/api/firmas` | Crea una firma con `{ "wacom_blob": "..." }` |
+| `DELETE` | `/api/firmas/:id` | Elimina una firma |
+
+No existe ruta de actualización ni edición.
 
 Ejemplo de entrada:
 
 ```json
 {
-  "tipo": "entrada",
-  "nombre": "Ana Torres",
-  "dni_hash": "a1b2...",
-  "fecha_inicio": "2026-11-12T15:04:05+00:00",
-  "estado": "Esperando firma"
+  "wacom_blob": "WACOM-STU430-..."
 }
 ```
-
-La respuesta final incluye `tipo: "final"`, `fecha_firma`, `firma_digital` (hash) y `estado`.
-
-## Recuperar una firma
-
-```bash
-docker compose exec backend php spark obtener-firma \
-  --hash HASH_DE_LA_FIRMA --formato png --salida /tmp/firma.png
-
-docker cp stu430_backend:/tmp/firma.png ./firma.png
-```
-
-Para ver el **paquete descifrado en JSON** (nombre, DNI, fecha, mime y `firma_base64`):
-
-```bash
-# En pantalla
-docker compose exec backend php spark obtener-firma --hash HASH_DE_LA_FIRMA --json
-
-# O guardado en un archivo
-docker compose exec backend php spark obtener-firma --hash HASH_DE_LA_FIRMA --json --salida /tmp/firma.json
-docker cp stu430_backend:/tmp/firma.json ./firma.json
-```
-
-> `--json` descifra el contenido: el archivo resultante contiene datos personales **en claro**. Para respaldos, guarda el sobre cifrado (`firma_cifrada`) y no el JSON descifrado.
-
-El hash se obtiene de `firmas_digitales.firma_hash`, no del contenedor cifrado.
 
 ## Pruebas
 
@@ -178,8 +128,6 @@ El hash se obtiene de `firmas_digitales.firma_hash`, no del contenedor cifrado.
 docker compose exec backend composer install
 docker compose exec backend vendor/bin/phpunit
 ```
-
-Resultado esperado: 9 pruebas y 24 aserciones.
 
 ## Seguridad y operación
 
@@ -193,14 +141,10 @@ Resultado esperado: 9 pruebas y 24 aserciones.
   docker compose exec db mysqldump -ustu430 -pstu430pass stu430 > respaldo.sql
   ```
 
-- Los archivos extraídos de firmas (`firma*.png`) están ignorados por Git.
-
 ## Problemas frecuentes
 
 | Síntoma | Causa probable |
 |---|---|
 | La tableta no conecta | SigCaptX detenido u ocupado por otra pestaña |
-| `FIRMA_AES_KEY` inválida | No son 32 bytes en base64 |
-| No se encuentra un DNI | Se cambió `FIRMA_HASH_SALT` sin rehash |
 | Listado vacío tras migrar | Ejecuta `docker compose logs backend` y revisa las migraciones |
 | Error de CORS | El frontend debe correr en `localhost:3000` o `localhost:5173` |

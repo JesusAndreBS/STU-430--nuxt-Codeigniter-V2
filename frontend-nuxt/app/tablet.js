@@ -5,12 +5,9 @@ export const ANCHO = 320
 export const ALTO = 200
 
 export const PASO_BIENVENIDA = 'bienvenida'
-export const PASO_DATOS = 'datos'
 export const PASO_FIRMA = 'firma'
-export const PASO_ESPERA = 'espera'
 export const PASO_CANCELADA = 'cancelada'
 export const PASO_GUARDADA = 'guardada'
-export const PASO_RECHAZADA = 'rechazada'
 
 export const LINEA_SEPARADOR = 120
 
@@ -97,18 +94,6 @@ export function pintarPantalla(canvas, opciones = {}) {
   ctx.lineTo(ANCHO, LINEA_SEPARADOR)
   ctx.stroke()
 
-  if (paso === PASO_ESPERA) {
-    ctx.fillStyle = '#000000'
-    ctx.font = 'bold 15px system-ui, "Segoe UI", sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillText('Firma enviada', ANCHO / 2, 56)
-    ctx.font = '12px system-ui, "Segoe UI", sans-serif'
-    ctx.fillText('Espere la verificación', ANCHO / 2, 78)
-    ctx.textAlign = 'left'
-    datosEmpleado(ctx, nombre, dni)
-    return aBase64(canvas)
-  }
-
   if (paso === PASO_CANCELADA) {
     ctx.fillStyle = '#000000'
     ctx.font = 'bold 14px system-ui, "Segoe UI", sans-serif'
@@ -128,18 +113,6 @@ export function pintarPantalla(canvas, opciones = {}) {
     ctx.fillText('Firma guardada', ANCHO / 2, 50)
     ctx.font = '11px system-ui, "Segoe UI", sans-serif'
     ctx.fillText('Correctamente', ANCHO / 2, 72)
-    ctx.textAlign = 'left'
-    datosEmpleado(ctx, nombre, dni)
-    return aBase64(canvas)
-  }
-
-  if (paso === PASO_RECHAZADA) {
-    ctx.fillStyle = '#000000'
-    ctx.font = 'bold 14px system-ui, "Segoe UI", sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillText('Firma no aceptada', ANCHO / 2, 50)
-    ctx.font = '11px system-ui, "Segoe UI", sans-serif'
-    ctx.fillText('Vuelva a intentarlo', ANCHO / 2, 72)
     ctx.textAlign = 'left'
     datosEmpleado(ctx, nombre, dni)
     return aBase64(canvas)

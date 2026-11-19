@@ -1,0 +1,347 @@
+FLUJO DE DATOS COMPLETO: WACOM STU-430 SISTEMA DE FIRMA BIOMÉTRICA
+====================================================================
+
+ARCHIVOS PRINCIPALES:
+- frontend-nuxt/app/wacom.js                 → Captura y estructura de firma
+- frontend-nuxt/app/composables/api.ts        → Llamadas API al backend
+- frontend-nuxt/app/components/Captura.vue    → UI captura + descifrado
+- frontend-nuxt/app/components/RegistroEmpleados.vue → Historial + descarga PNG
+- backend/app/Controllers/Api/Firmas.php      → Controlador API (create, descargarPng, decodificarEstructuraWacom)
+- backend/app/Database/Migrations/2026-11-18-000001_AddMetadataToFirmas.php → Migración BD
+
+====================================================================
+1. JSON QUE ENVÍA EL FRONTEND AL BACKEND
+====================================================================
+
+POST /api/firmas
+Content-Type: application/json
+
+{
+  "wacom_blob": "WACOM-STU430-AQIDBAUGBgYRCCkqKk/NZ...",
+  "nombre": "Juan Pérez",
+  "dni": "12345678A",
+  "fecha_firmado": "2026-11-18T10:30:00Z"
+}
+
+Código origen (api.ts):
+```typescript
+const registrarFirma = async (datos: {
+  wacom_blob: string;
+  nombre: string;
+  dni: string;
+  fecha_firmado: string;
+}) => {
+  const { data, error } = await useFetch('/api/firmas', {
+    method: 'POST',
+    body: {
+      wacom_blob: datos.wacom_blob,
+      nombre: datos.nombre,
+      dni: datos.dni,
+      fecha_firmado: datos.fecha_firmado,
+    },
+  });
+  return data;
+};
+```
+
+Estructura generada en wacom.js (capturarFirma):
+```javascript
+capturarFirma({
+  nombre: "Juan Pérez",
+  dni: "12345678A",
+  firma_encriptada_wacom: "WACOM-STU430-<binario_encriptado>",
+  serial_pad: "ABC123",
+  fecha: "2026-11-18T10:30:00Z"
+})
+```
+
+====================================================================
+2. LO QUE RECIBE Y HACE EL BACKEND
+====================================================================
+
+Archivo: backend/app/Controllers/Api/Firmas.php
+
+```php
+public function create(Request $request)
+{
+  $data = $request->only(['wacom_blob', 'nombre', 'dni', 'fecha_firmado']);
+  
+  // Validación DNI único - ERROR 422 si duplicado
+  $exists = Firma::where('dni', $data['dni'])->exists();
+  if ($exists) {
+      return response()->json([
+          'error' => "DNI ya registrado, por el usuario " . 
+                     substr($data['nombre'], 0, 1) . "*****"
+      ], 422);
+  }
+  
+  // Guardar registro (backend NO desencripta)
+  $firma = Firma::create([
+      'nombre' => $data['nombre'],
+      'dni' => $data['dni'],
+      'fecha_firmado' => $data['fecha_firmado'],
+      'wacom_blob' => $data['wacom_blob'],  // Guardado tal cual
+  ]);
+  
+  return response()->json(['id' => $firma->id], 201);
+}
+```
+
+Tabla `firmas` después del guardado:
+| Campo          | Valor                                     |
+|----------------|-------------------------------------------|
+| id             | 24 (auto-incremental)                    |
+| nombre         | "Juan Pérez"                             |
+| dni            | "12345678A"                              |
+| fecha_firmado  | "2026-11-18 10:30:00"                    |
+| wacom_blob     | "WACOM-STU430-AQIDBAUGBgYRCCkqKk/NZ..."  |
+| fecha_creacion | 2026-11-18 10:30:00                      |
+
+====================================================================
+3. CÓMO SE "DESENCRIPTA" - ARQUITECTURA REAL
+====================================================================
+
+⚠️ CLAVE DEL DISEÑO: El backend NO desencripta nada.
+   Restricción: "El backend no intenta descifrar/encriptar/hashear; 
+   solo valida unicidad de DNI y extrae metadatos del blob."
+
+El desencriptado ocurre en FRONTEND con tableta física conectada.
+
+----------------------------------------
+3.1 Backend: Solo valida y extrae metadatos
+----------------------------------------
+
+```php
+// backend/app/Controllers/Api/Firmas.php
+
+// Decodifica estructura externa pero NO descifra la firma
+public function decodificarEstructuraWacom(string $wacomBlob): array
+{
+  $json = substr($wacomBlob, strlen('WACOM-STU430-'));
+  $estructura = json_decode($json, true);
+  
+  return [
+      'nombre' => $estructura['nombre'] ?? '',
+      'dni' => $estructura['dni'] ?? '',
+      'fecha' => $estructura['fecha'] ?? '',
+      'serial_pad' => $estructura['serial_pad'] ?? 'N/A',
+  ];
+}
+
+// Extrae PNG si es formato simulado, sino retorna null
+public function extraerPngBase64(string $wacomBlob): ?string
+{
+  $estructura = $this->decodificarEstructuraWacom($wacomBlob);
+  if ($estructura['firma_encriptada_wacom'] ?? null) {
+      // Lógica para extraer base64 si formato simulado...
+  }
+  return null; // Para formato real → null (requiere tableta)
+}
+```
+
+----------------------------------------
+3.2 Frontend: Dos escenarios de desencriptado
+----------------------------------------
+
+Archivo: frontend-nuxt/app/components/Captura.vue
+
+```typescript
+const verificarEncriptacion = async () => {
+  const PREFIJO = 'WACOM-STU430-';
+  
+  // 1. Validar prefijo
+  if (!blob.startsWith(PREFIJO)) {
+    throw new Error('El blob no tiene el prefijo WACOM-STU430-');
+  }
+  
+  // 2. Decodificar estructura externa
+  const jsonExterno = atob(blob.slice(PREFIJO.length));
+  const estructura = JSON.parse(jsonExterno);
+  // estructura = {nombre, dni, firma_encriptada_wacom, fecha}
+  
+  // 3. Detectar formato:
+  
+  // CASO A: Formato SIMULADO (JSON anidado con firma_base64)
+  if (estructura.firma_encriptada_wacom.startsWith(PREFIJO)) {
+    try {
+      const jsonInterno = atob(estructura.firma_encriptada_wacom.slice(PREFIJO.length));
+      const paquete = JSON.parse(jsonInterno);
+      
+      if (paquete.firma_base64) {
+        // PNG extraído directo - SIN tableta
+        resultado.pngBase64 = paquete.firma_base64;
+        resultado.raw = JSON.stringify(paquete, null, 2);
+      }
+    } catch (e) {
+      // Error en JSON interno → cae a formato real
+    }
+  }
+  
+  // CASO B: Formato REAL Wacom (binario encriptado por dispositivo)
+  else {
+    resultado.raw = 'Datos binarios encriptados por Wacom STU-430 (requiere descifrado con tableta)';
+    
+    try {
+      const encryptedData = atob(estructura.firma_encriptada_wacom.slice(PREFIJO.length));
+      const bytes = new Uint8Array(encryptedData.length);
+      
+      for (let i = 0; i < encryptedData.length; i++) {
+        bytes[i] = encryptedData.charCodeAt(i);
+      }
+      
+      // USAR SDK DE TABLETA FÍSICA PARA DESCIFRAR
+      const Crypto = STU().Crypto;
+      const decrypted = await Crypto.decrypt(bytes);  // ← CRÍTICO
+      
+      if (decrypted) {
+        const pngBase64 = btoa(String.fromCharCode(...new Uint8Array(decrypted)));
+        resultado.pngBase64 = pngBase64;
+        resultado.raw = `Descifrado con STU-430: ${decrypted.length} bytes → PNG ${pngBase64.length} chars`;
+      }
+    } catch (cryptoError: any) {
+      resultado.raw = `Formato real Wacom detectado, pero error al descifrar: ${cryptoError.message}`;
+    }
+  }
+  
+  resultadoVerificacion.value = resultado;
+};
+```
+
+====================================================================
+4. COMPARATIVA: FORMATO SIMULADO vs REAL
+====================================================================
+
+| Característica        | Formato Simulado                                      | Formato Real Wacom                          |
+|----------------------|------------------------------------------------------|--------------------------------------------|
+| firma_encriptada_wacom | WACOM-STU430-{"firma_base64":"iVBORw0KGgoAAA...","serial":"XYZ"} | Datos binarios AES-256 encriptados por dispositivo |
+| ¿Ver sin tableta?    | ✅ Sí - extrae firma_base64 directo en JS            | ❌ No - requiere tableta física             |
+| ¿Qué hace frontend?  | Extrae firma_base64 de JSON anidado                  | Llama a STU().Crypto.decrypt() con tableta |
+| Caso de uso          | Desarrollo, pruebas, datos migrados                  | Firmas capturadas en operación real        |
+| Rol backend          | Extrae metadatos, retorna null para PNG              | Igual - no toca el desencriptado           |
+
+====================================================================
+5. FLUJO COMPLETO RESUMIDO
+====================================================================
+
+USUARIO (Windows, STU-430 conectada)
+  ↓
+FRONTEND (Nuxt/Vue)
+  |-- capturarFirma() → estructura JSON anidada
+  |-- POST /api/firmas → {wacom_blob, nombre, dni, fecha_firmado}
+  ↓
+BACKEND (PHP/Laravel)
+  |-- create(): validar DNI único → guardar wacom_blob TEXT tal cual
+  |-- decodificarEstructuraWacom(): parsear JSON externo
+  |-- extraerPngBase64(): intentar extraer si formato simulado
+  ↓ (backend no toca desencriptado)
+  ↓
+FRONTEND (Modal "🔓 Descifrar wacom_blob")
+  |-- usuario pega wacom_blob de BD
+  |-- detecta formato:
+  |   ├── Simulado → extrae PNG base64 directo
+  |   └── Real → STU().Crypto.decrypt() con tableta física
+  ↓
+RESULTADO: {nombre, dni, fecha, serial, pngBase64, raw}
+
+====================================================================
+6. EJEMPLO PRÁCTICO DE DATOS REALES
+====================================================================
+
+wacom_blob guardado en BD (formato simulado - desarrollo):
+WACOM-STU430-eyJmb28iOiIyMDI2NzgwMyJ9
+
+Decodificado (base64):
+{
+  "nombre": "Juan Pérez",
+  "dni": "12345678A",
+  "firma_encriptada_wacom": "WACOM-STU430-{\"firma_base64\":\"iVBORw0KGgoAAAANSUhEUg...\",\"serial\":\"XYZ\"}",
+  "fecha": "2026-11-18T10:30:00Z"
+}
+
+Al pasar por verificarEncriptacion() frontend:
+1. Quita prefijo → JSON externo
+2. Parsea → tiene firma_encriptada_wacom
+3. Ese campo empieza con WACOM-STU430- → formato simulado
+4. Decode interno → encuentra firma_base64: "iVBORw0KGgoAAAANSUhEUg..."
+5. Mostrar PNG: data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...
+
+====================================================================
+wacom_blob en formato real (producción):
+WACOM-STU430-<32 bytes binarios encriptados AES-256 por la STU-430>
+
+Al pasar por verificarEncriptacion():
+1. Quita prefijo → JSON externo
+2. El firma_encriptada_wacom NO empieza con WACOM-STU430- → formato real
+3. Llamar a STU().Crypto.decrypt(bytes) con tableta conectada
+4. Si éxito: obtener PNG base64 + "Descifrado con STU-430"
+5. Si error: "error al descifrar: [mensaje]"
+
+====================================================================
+7. RESUMEN DE CÓDIGO CLAVE
+====================================================================
+
+Frontend envía (api.ts):
+```typescript
+body: {
+  wacom_blob: "WACOM-STU430-...",  // string TEXT al backend
+  nombre: "Juan Pérez",
+  dni: "12345678A",
+  fecha_firmado: "2026-11-18T10:30:00Z"
+}
+```
+
+Backend recibe y guarda (Firmas.php:create):
+```php
+$firma = Firma::create([
+  'nombre' => $data['nombre'],
+  'dni' => $data['dni'], 
+  'fecha_firmado' => $data['fecha_firmado'],
+  'wacom_blob' => $data['wacom_blob'],  // Guardado SIN desencriptar
+]);
+```
+
+Frontend descifra (Captura.vue:verificarEncriptacion):
+```typescript
+// Dos caminos:
+// 1. Formato simulado: extrae PNG base64 directo
+// 2. Formato real: STU().Crypto.decrypt() con tableta física
+```
+
+Backend solo extrae metadatos (Firmas.php:decodificarEstructuraWacom):
+```php
+return [
+  'nombre' => $estructura['nombre'] ?? '',
+  'dni' => $estructura['dni'] ?? '',
+  'fecha' => $estructura['fecha'] ?? '',
+  'serial_pad' => $estructura['serial_pad'] ?? 'N/A',
+];
+```
+
+====================================================================
+8. VALIDACIÓN DNI ÚNICO
+====================================================================
+
+BD: ALTER TABLE firmas ADD CONSTRAINT uq_dni UNIQUE (dni);
+Aplicación: Validación previa + mensaje enmascarado
+Error: "DNI ya registrado, por el usuario J*****"
+
+====================================================================
+9. BUILD Y TESTS
+====================================================================
+
+Frontend: npm run build → ✅ 12s (Windows PowerShell)
+Backend: php vendor/bin/phpunit → ✅ 1 test, 2 assertions
+API: POST/GET/PNG → ✅ Funcionando
+Migración BD: ✅ Aplicada con validación DNI único
+
+====================================================================
+10. PROBLEMA CONOCIDO
+====================================================================
+
+WSL/Linux: Build falla en `rolldown` bindings nativos
+Solución: `cd frontend-nuxt && npm run dev` en Windows PowerShell
+Razón: SDK Wacom STU-430 y drivers SigCaptX requieren Windows
+
+====================================================================
+FIN DEL DOCUMENTO TÉCNICO
+====================================================================

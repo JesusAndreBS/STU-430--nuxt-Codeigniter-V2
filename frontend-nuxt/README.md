@@ -1,7 +1,7 @@
 # Frontend STU-430 (Nuxt 4)
 
-Interfaz de operador del sistema de firmas: captura de la firma en la tableta
-Wacom STU-430 y listado/búsqueda de empleados.
+Interfaz de operador: captura la firma en la tableta Wacom STU-430 y lista los
+blobs guardados. El frontend no cifra, descifra ni hashea datos.
 
 ## Puesta en marcha
 
@@ -37,12 +37,13 @@ app/
 ├── app.vue                 pantalla principal (captura + listado)
 ├── components/
 │   ├── Captura.vue         datos del empleado, pasos y firma
-│   └── RegistroEmpleados.vue  tabla, búsqueda, edición y descarga
+│   └── RegistroEmpleados.vue  tabla, búsqueda y eliminación
 ├── composables/api.ts      cliente de la API REST
 ├── assets/css/main.css     estilos globales
 ├── tablet.js               dibujo de la pantalla 320×200 de la tableta
 ├── conexion.js             conexión USB con la tableta
-└── stu.js                  validación de los resultados de SigCaptX
+├── stu.js                  validación de los resultados de SigCaptX
+└── wacom.js                adaptador que genera el wacom_blob (base64)
 ```
 
 > Nuxt 4 usa `app/` como directorio de código (`srcDir`). Los archivos fuera de

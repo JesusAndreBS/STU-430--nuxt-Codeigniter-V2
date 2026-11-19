@@ -37,7 +37,13 @@ export async function conectarTableta(STU, devices, { onLapiz, areaEscritura }) 
   handler.onReportPenData = onLapiz
   comprobar(await handler.startReporting(tablet, false))
 
-  return { usb, protocol, tablet, handler }
+  let serial = ''
+  try {
+    const respuesta = await tablet.getEserial()
+    serial = typeof respuesta === 'string' ? respuesta : String(respuesta?.string ?? '')
+  } catch { /* firmware sin serial */ }
+
+  return { usb, protocol, tablet, handler, serial }
 }
 
 /**

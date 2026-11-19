@@ -8,15 +8,14 @@ const SECTIONS = [
     title: 'Visión General',
     icon: '📋',
     content: `
-      <p>Sistema para registrar empleados y capturar su firma con una tableta <strong>Wacom STU-430</strong>. La identidad y la firma se guardan cifradas; la base de datos solo conserva hashes para búsquedas.</p>
+      <p>Sistema para capturar la firma de un empleado con una tableta <strong>Wacom STU-430</strong>. El formulario pide nombre y DNI; el adaptador Wacom genera un único <code>wacom_blob</code> y la base de datos lo guarda tal cual.</p>
 
       <h3>Características</h3>
       <ul>
-        <li><strong>Captura biométrica:</strong> trazo de la tableta en PNG.</li>
-        <li><strong>Flujo en dos fases:</strong> datos → firma → verificación del operador.</li>
-        <li><strong>Cifrado:</strong> AES-256-GCM para identidad y firma; HMAC-SHA256 para búsquedas.</li>
-        <li><strong>Estados:</strong> Firmado / Pendiente de firma.</li>
-        <li><strong>Recuperación:</strong> comando CLI que extrae el PNG desde el contenedor cifrado.</li>
+        <li><strong>Captura:</strong> nombre, DNI y trazo de la tableta.</li>
+        <li><strong>Blob opaco:</strong> el frontend y el backend no cifran, descifran ni hashean; el adaptador lo empaqueta en base64.</li>
+        <li><strong>Historial:</strong> cada firma es un registro nuevo; no se edita.</li>
+        <li><strong>Eliminación:</strong> el operador puede borrar un registro del historial.</li>
         <li><strong>Reconexión automática:</strong> detecta la tableta ocupada y reintenta.</li>
       </ul>
 
@@ -26,7 +25,7 @@ const SECTIONS = [
         <div class="tech-item"><span class="badge backend">Backend</span> CodeIgniter 4.7 + PHP 8.3</div>
         <div class="tech-item"><span class="badge db">Base de datos</span> MySQL 8</div>
         <div class="tech-item"><span class="badge tablet">Tablet</span> Wacom STU-430 + SigCaptX</div>
-        <div class="tech-item"><span class="badge crypto">Crypto</span> AES-256-GCM + HMAC-SHA256</div>
+        <div class="tech-item"><span class="badge crypto">Blob</span> WACOM-STU430-...</div>
       </div>
 
       <div class="callout callout-tip">
@@ -62,8 +61,6 @@ const SECTIONS = [
 
       <h3>2. Backend y base de datos</h3>
       <pre class="diagram" data-lang="bash"><code>cp backend/.env.example backend/.env
-openssl rand -base64 32   # FIRMA_AES_KEY
-openssl rand -hex 32      # FIRMA_HASH_SALT
 docker compose up -d --build
 docker compose logs -f backend</code></pre>
 
@@ -90,9 +87,9 @@ npm run dev</code></pre>
     content: `
       <h3>Componentes</h3>
       <ul>
-        <li><strong>Nuxt:</strong> captura Wacom, formulario, listado y descarga de firmas.</li>
-        <li><strong>API CodeIgniter:</strong> validación, cifrado, hashes y acceso a MySQL.</li>
-        <li><strong>MySQL:</strong> identidad cifrada y firma cifrada, relacionadas por <code>empleado_id</code>.</li>
+        <li><strong>Nuxt:</strong> captura Wacom, formulario, listado y descarga del blob.</li>
+        <li><strong>API CodeIgniter:</strong> valida que el blob no esté vacío y accede a MySQL.</li>
+        <li><strong>MySQL:</strong> una fila por firma en <code>firmas</code>.</li>
         <li><strong>SigCaptX:</strong> servicio local que expone la tableta al navegador.</li>
       </ul>
 
@@ -100,18 +97,18 @@ npm run dev</code></pre>
       <ol>
         <li>El operador introduce nombre y DNI.</li>
         <li>El empleado firma en la tableta.</li>
-        <li>El frontend envía el PNG en base64 junto con la identidad.</li>
-        <li>El backend valida, cifra la identidad y la firma, y guarda hashes para búsquedas.</li>
-        <li>La firma anterior se reemplaza en una sola transacción.</li>
+        <li>El adaptador Wacom genera un único <code>wacom_blob</code>.</li>
+        <li>El frontend envía solo <code>{ wacom_blob }</code>.</li>
+        <li>El backend hace <code>INSERT</code> y no interpreta el contenido.</li>
       </ol>
 
       <pre class="diagram" data-lang="text"><code>Nuxt (3000)
-   │  HTTP JSON
+   │  { wacom_blob }
    ▼
 API CodeIgniter (8090)
-   │  AES-256-GCM
+   │  INSERT directo
    ▼
-MySQL: empleados 1 ─── 1 firmas_digitales</code></pre>
+MySQL: firmas (id, wacom_blob, fecha_creacion)</code></pre>
     `
   },
   {
@@ -119,31 +116,17 @@ MySQL: empleados 1 ─── 1 firmas_digitales</code></pre>
     title: 'Base de Datos',
     icon: '🗄️',
     content: `
-      <h3>empleados</h3>
+      <h3>firmas</h3>
       <table class="doc-table">
         <thead><tr><th>Columna</th><th>Tipo</th><th>Uso</th></tr></thead>
         <tbody>
-          <tr><td><code>id</code></td><td>INT UNSIGNED</td><td>Clave primaria</td></tr>
-          <tr><td><code>dni_hash</code></td><td>CHAR(64) único</td><td>HMAC-SHA256 del DNI</td></tr>
-          <tr><td><code>nombre_dni_hash</code></td><td>CHAR(64) único</td><td>HMAC-SHA256 de nombre + DNI</td></tr>
-          <tr><td><code>identidad_cifrada</code></td><td>LONGTEXT NOT NULL</td><td>Identidad cifrada</td></tr>
-          <tr><td><code>created_at</code>, <code>updated_at</code></td><td>DATETIME</td><td>Auditoría</td></tr>
+          <tr><td><code>id</code></td><td>INT AUTO_INCREMENT</td><td>Clave primaria</td></tr>
+          <tr><td><code>wacom_blob</code></td><td>TEXT NOT NULL</td><td>Blob opaco generado por el adaptador Wacom</td></tr>
+          <tr><td><code>fecha_creacion</code></td><td>DATETIME NOT NULL</td><td><code>CURRENT_TIMESTAMP</code></td></tr>
         </tbody>
       </table>
 
-      <h3>firmas_digitales</h3>
-      <table class="doc-table">
-        <thead><tr><th>Columna</th><th>Tipo</th><th>Uso</th></tr></thead>
-        <tbody>
-          <tr><td><code>id</code></td><td>INT UNSIGNED</td><td>Clave primaria</td></tr>
-          <tr><td><code>empleado_id</code></td><td>INT UNSIGNED único</td><td>FK con borrado en cascada</td></tr>
-          <tr><td><code>firma_hash</code></td><td>CHAR(64) único</td><td>SHA-256 de identidad + cifrado</td></tr>
-          <tr><td><code>firma_cifrada</code></td><td>LONGTEXT</td><td>Contenedor AES-256-GCM</td></tr>
-          <tr><td><code>created_at</code></td><td>DATETIME NOT NULL</td><td>Fecha de firma</td></tr>
-        </tbody>
-      </table>
-
-      <p>No se almacenan nombre, DNI ni PNG en claro. El listado solo descifra la identidad; el PNG se descifra al abrir el detalle o al recuperarlo por CLI.</p>
+      <p>No hay columnas de nombre, DNI, firma ni hash. Todo el paquete vive dentro de <code>wacom_blob</code>.</p>
     `
   },
   {
@@ -156,22 +139,21 @@ MySQL: empleados 1 ─── 1 firmas_digitales</code></pre>
       <table class="doc-table">
         <thead><tr><th>Método</th><th>Ruta</th><th>Descripción</th></tr></thead>
         <tbody>
-          <tr><td>GET</td><td><code>/empleados?q=</code></td><td>Listado o búsqueda por nombre/DNI</td></tr>
-          <tr><td>GET</td><td><code>/empleados/:id</code></td><td>Detalle con <code>firma_base64</code></td></tr>
-          <tr><td>POST</td><td><code>/empleados</code></td><td>Crear empleado; firma opcional</td></tr>
-          <tr><td>PUT</td><td><code>/empleados/:id</code></td><td>Actualizar identidad; descarta firma</td></tr>
-          <tr><td>DELETE</td><td><code>/empleados/:id</code></td><td>Eliminar empleado y firma</td></tr>
-          <tr><td>PUT</td><td><code>/empleados/:id/firma</code></td><td>Crear o reemplazar firma</td></tr>
-          <tr><td>POST</td><td><code>/firmas/iniciar</code></td><td>Generar JSON de entrada</td></tr>
+          <tr><td>GET</td><td><code>/firmas</code></td><td>Lista <code>id</code>, <code>wacom_blob</code> y <code>fecha_creacion</code></td></tr>
+          <tr><td>GET</td><td><code>/firmas/:id</code></td><td>Devuelve el blob tal cual está en la BD</td></tr>
+          <tr><td>POST</td><td><code>/firmas</code></td><td>Guarda <code>{ "wacom_blob": "..." }</code></td></tr>
+          <tr><td>DELETE</td><td><code>/firmas/:id</code></td><td>Elimina el registro</td></tr>
         </tbody>
       </table>
 
-      <h3>Crear con firma</h3>
-      <pre class="diagram" data-lang="bash"><code>curl -X POST http://localhost:8090/api/empleados \\
-  -H "Content-Type: application/json" \\
-  -d '{"nombre":"Ana Torres","dni":"12345678","firma_base64":"iVBORw0KGgo..."}'</code></pre>
+      <p>No existe ruta de edición ni actualización. Para cambiar una firma se crea un registro nuevo.</p>
 
-      <p>La respuesta final incluye <code>fecha_firma</code>, <code>firma_digital</code> y <code>estado</code>. El listado no transporta el PNG.</p>
+      <h3>Guardar una firma</h3>
+      <pre class="diagram" data-lang="bash"><code>curl -X POST http://localhost:8090/api/firmas \\
+  -H "Content-Type: application/json" \\
+  -d '{"wacom_blob":"WACOM-STU430-..."}'</code></pre>
+
+      <p>El backend solo comprueba que <code>wacom_blob</code> no esté vacío; nunca lee su contenido.</p>
     `
   },
   {
@@ -179,22 +161,22 @@ MySQL: empleados 1 ─── 1 firmas_digitales</code></pre>
     title: 'Seguridad',
     icon: '🔐',
     content: `
-      <h3>Cifrado</h3>
+      <h3>Blob Wacom</h3>
       <table class="doc-table">
         <tbody>
-          <tr><td>Identidad y firma</td><td>AES-256-GCM con IV y tag aleatorios</td></tr>
-          <tr><td>Clave</td><td><code>FIRMA_AES_KEY</code> (32 bytes base64)</td></tr>
-          <tr><td>Contexto GCM</td><td><code>stu430-firma-digital-v1</code></td></tr>
-          <tr><td>Búsqueda por DNI</td><td>HMAC-SHA256 con <code>FIRMA_HASH_SALT</code></td></tr>
-          <tr><td>Integridad de firma</td><td>SHA-256 sobre identidad + contenedor</td></tr>
+          <tr><td>Origen</td><td>Adaptador del SDK Wacom STU-430</td></tr>
+          <tr><td>Contenido</td><td>Nombre, DNI, trazo, serial y timestamp dentro del blob</td></tr>
+          <tr><td>Formato</td><td>Base64 de un JSON; no es cifrado de hardware</td></tr>
+          <tr><td>Aplicación</td><td>No cifra, no descifra y no hashea</td></tr>
+          <tr><td>Backend</td><td>Solo valida que el blob no esté vacío</td></tr>
+          <tr><td>Verificación</td><td>No implementada; el blob solo se conserva y se devuelve tal cual</td></tr>
         </tbody>
       </table>
 
       <div class="callout callout-warning">
         <div class="callout-content">
-          <div class="callout-title">Rotación de claves</div>
-          Cambiar <code>FIRMA_HASH_SALT</code> invalida las búsquedas hasta rehashear los DNIs.
-          Cambiar <code>FIRMA_AES_KEY</code> impide descifrar registros anteriores.
+          <div class="callout-title">Regla de oro</div>
+          El backend nunca interpreta el contenido de <code>wacom_blob</code>. La firma no se edita: para reemplazarla se crea un registro nuevo.
         </div>
       </div>
 
@@ -212,21 +194,10 @@ MySQL: empleados 1 ─── 1 firmas_digitales</code></pre>
     title: 'Comandos',
     icon: '⌨️',
     content: `
-      <h3>Recuperar una firma</h3>
-      <pre class="diagram" data-lang="bash"><code>docker compose exec backend php spark obtener-firma \\
-  --hash HASH_DE_LA_FIRMA --formato png --salida /tmp/firma.png
-
-docker cp stu430_backend:/tmp/firma.png ./firma.png</code></pre>
-      <p>El hash se toma de <code>firmas_digitales.firma_hash</code>.</p>
-
-      <h3>Ver el paquete descifrado en JSON</h3>
-      <pre class="diagram" data-lang="bash"><code>docker compose exec backend php spark obtener-firma \\
-  --hash HASH_DE_LA_FIRMA --json
-
-docker compose exec backend php spark obtener-firma \\
-  --hash HASH_DE_LA_FIRMA --json --salida /tmp/firma.json
-docker cp stu430_backend:/tmp/firma.json ./firma.json</code></pre>
-      <p>Muestra <code>nombre</code>, <code>dni</code>, <code>fecha_firma</code>, <code>mime</code> y <code>firma_base64</code>. Ojo: el JSON queda en texto claro; para respaldos conserva el sobre cifrado.</p>
+      <h3>Consultar una firma</h3>
+      <pre class="diagram" data-lang="bash"><code>curl http://localhost:8090/api/firmas
+curl http://localhost:8090/api/firmas/1</code></pre>
+      <p>El detalle devuelve el <code>wacom_blob</code> sin modificarlo.</p>
 
       <h3>Pruebas</h3>
       <pre class="diagram" data-lang="bash"><code>docker compose exec backend composer install
@@ -250,8 +221,6 @@ npm run build</code></pre>
         <thead><tr><th>Síntoma</th><th>Causa probable</th></tr></thead>
         <tbody>
           <tr><td>La tableta no conecta</td><td>SigCaptX detenido u ocupado por otra pestaña</td></tr>
-          <tr><td>Error de clave AES</td><td><code>FIRMA_AES_KEY</code> no son 32 bytes base64</td></tr>
-          <tr><td>No se encuentra un DNI</td><td>Se cambió <code>FIRMA_HASH_SALT</code> sin rehash</td></tr>
           <tr><td>Error de CORS</td><td>El frontend no corre en <code>localhost:3000</code> o <code>localhost:5173</code></td></tr>
           <tr><td>Migraciones fallan</td><td>Revisar <code>docker compose logs backend</code></td></tr>
         </tbody>
@@ -259,7 +228,7 @@ npm run build</code></pre>
 
       <h3>Verificaciones rápidas</h3>
       <pre class="diagram" data-lang="bash"><code>docker compose ps
-curl http://localhost:8090/api/empleados
+curl http://localhost:8090/api/firmas
 docker compose exec backend php spark migrate:status</code></pre>
     `
   }

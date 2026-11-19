@@ -8,12 +8,12 @@ intento=1
 while :; do
   php spark migrate --all > /tmp/migrate.log 2>&1
 
-  if php verificar-bd.php empleados; then
+  if php verificar-bd.php firmas; then
     break
   fi
 
   if [ "$intento" -ge 12 ]; then
-    echo "ERROR: la tabla 'empleados' no se pudo crear tras $intento intentos."
+    echo "ERROR: la tabla 'firmas' no se pudo crear tras $intento intentos."
     cat /tmp/migrate.log
     exit 1
   fi
@@ -23,5 +23,5 @@ while :; do
   sleep 5
 done
 
-echo "Migraciones aplicadas: la tabla 'empleados' existe."
+echo "Migraciones aplicadas: la tabla 'firmas' existe."
 exec apache2-foreground
