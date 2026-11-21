@@ -23,12 +23,24 @@ class Firmas extends BaseController
 
     public function index()
     {
-        $filas = db_connect()
-            ->table('firmas')
-            ->select('id, nombre, dni, fecha_firmado, fecha_creacion')
-            ->orderBy('id', 'DESC')
-            ->get()
-            ->getResultArray();
+        $dni = $this->request->getGet('dni');
+        
+        $db = db_connect();
+        
+        if ($dni) {
+            $dniLimpio = strtoupper(preg_replace('/\s+/', '', $dni));
+            $sql = "SELECT id, nombre, dni, fecha_firmado, fecha_creacion 
+                    FROM firmas 
+                    WHERE dni = ? 
+                    ORDER BY id DESC";
+            $filas = $db->query($sql, [$dniLimpio])->getResultArray();
+        } else {
+            $filas = $db->table('firmas')
+                ->select('id, nombre, dni, fecha_firmado, fecha_creacion')
+                ->orderBy('id', 'DESC')
+                ->get()
+                ->getResultArray();
+        }
 
         return $this->response->setJSON([
             'status' => 'ok',
@@ -85,7 +97,13 @@ class Firmas extends BaseController
             return $this->error(422, 'Nombre y DNI son obligatorios (en request o en blob Wacom).');
         }
 
-        // Verificar unicidad del DNI
+        // Normalizar DNI: quitar espacios, mayúsculas, solo alfanumérico
+        $dni = strtoupper(preg_replace('/\s+/', '', $dni));
+        if ($estructura && isset($estructura['dni'])) {
+            $estructura['dni'] = strtoupper(preg_replace('/\s+/', '', $estructura['dni']));
+        }
+
+        // Verificar unicidad del DNI (validación en aplicación)
         $db = db_connect();
         $existente = $db->table('firmas')
             ->select('id, nombre, fecha_firmado')
@@ -109,16 +127,38 @@ class Firmas extends BaseController
             $fecha_firmado = date('c');
         }
 
-        $db->table('firmas')->insert([
-            'wacom_blob'    => $blob,
-            'nombre'        => $nombre,
-            'dni'           => $dni,
-            'fecha_firmado' => $fecha_firmado,
-        ]);
-        $id = (int) $db->insertID();
+        try {
+            $db->table('firmas')->insert([
+                'wacom_blob'    => $blob,
+                'nombre'        => $nombre,
+                'dni'           => $dni,
+                'fecha_firmado' => $fecha_firmado,
+            ]);
+            $id = (int) $db->insertID();
 
-        if ($id === 0) {
-            return $this->error(500, 'No se pudo guardar la firma en la base de datos.');
+            if ($id === 0) {
+                return $this->error(500, 'No se pudo guardar la firma en la base de datos.');
+            }
+        } catch (\CodeIgniter\Database\Exceptions\DatabaseException $e) {
+            // Fallback: captura violación de UNIQUE constraint (race condition)
+            if ($e->getCode() === 1062 || str_contains($e->getMessage(), 'Duplicate entry')) {
+                // Re-buscar para dar mensaje con nombre
+                $existente = $db->table('firmas')
+                    ->select('id, nombre')
+                    ->where('dni', $dni)
+                    ->get()
+                    ->getRowArray();
+                
+                $primerNombre = '';
+                if ($existente && $existente['nombre']) {
+                    $partes = explode(' ', trim($existente['nombre']));
+                    $primerNombre = $partes[0] ?? '';
+                }
+                $nombreEnmascarado = $primerNombre . '*****';
+                
+                return $this->error(422, "DNI ya registrado, por el usuario {$nombreEnmascarado}");
+            }
+            throw $e;
         }
 
         return $this->response->setStatusCode(201)->setJSON([

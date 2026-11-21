@@ -560,8 +560,7 @@ body {
 
 .empty-state svg { opacity: 0.45; color: var(--muted-soft); }
 
-.acciones,
-.modal-acciones {
+.acciones {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -571,6 +570,27 @@ body {
 .barra-acciones { align-items: center; gap: 12px; }
 
 .barra-acciones .estado { margin: 0; }
+
+/* Botones en modales: apilados, ancho completo, al fondo */
+.modal-acciones {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.modal-acciones .btn {
+  width: 100%;
+  justify-content: center;
+  padding: 13px 20px;
+  font-size: 0.92rem;
+}
+
+.modal-acciones .btn:first-child {
+  margin-bottom: 4px;
+}
 
 .btn {
   display: inline-flex;
@@ -932,4 +952,55 @@ body {
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.aviso-tableta-desconectada {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.png-container {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.png-container label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.png-preview-grande {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+  margin-top: 8px;
+}
+
+.png-info {
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+  color: var(--muted-soft);
+}
+
+.png-container .btn {
+  margin-top: 12px;
 }

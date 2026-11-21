@@ -63,3 +63,12 @@ export async function descargarPngFirma(id: number): Promise<Blob> {
   }
   return res.blob()
 }
+
+export async function verificarDniUnico(dni: string): Promise<{ existe: boolean; nombre?: string }> {
+  const json = await fetchJson(`${apiBase()}/firmas?dni=${encodeURIComponent(dni)}`)
+  const firmas = json.data ?? []
+  if (firmas.length > 0) {
+    return { existe: true, nombre: firmas[0].nombre }
+  }
+  return { existe: false }
+}

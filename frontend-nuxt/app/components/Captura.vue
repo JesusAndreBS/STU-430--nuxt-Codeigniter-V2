@@ -70,12 +70,8 @@
           ref="tintaRef"
           :width="AREA_FIRMA.w"
           :height="AREA_FIRMA.h"
-          @pointerdown="alEmpezarTrazo"
-          @pointermove="alSeguirTrazo"
-          @pointerup="soltarRaton"
-          @pointerleave="soltarRaton"
         />
-        <span v-if="!hayFirma" class="firma-pista">Firme en la tableta</span>
+        <span v-if="!hayFirma" class="firma-pista">Firme en la tableta STU-430</span>
         <span class="firma-renglon" aria-hidden="true" />
       </div>
 
@@ -95,12 +91,13 @@
         type="button"
       >
         🔓 Descifrar wacom_blob con tableta
+        
       </button>
     </div>
 
     <!-- Modal de descifrado Wacom -->
-    <div v-if="mostrarModalDescifrado" class="modal-fondo" @click="cerrarModalDescifrado">
-      <div class="modal modal-descifrado" @click.stop>
+    <div v-if="mostrarModalDescifrado" class="modal-fondo" @click.self="cerrarModalDescifrado">
+      <div class="modal modal-descifrado">
         <div class="modal-head">
           <h3>🔓 Descifrar wacom_blob con STU-430</h3>
           <button class="btn-icon" @click="cerrarModalDescifrado" aria-label="Cerrar">✕</button>
@@ -153,6 +150,9 @@
               <label>🖼️ Firma descifrada:</label>
               <img :src="'data:image/png;base64,' + resultadoVerificacion.pngBase64" alt="Firma descifrada" class="png-preview-grande" />
               <p class="png-info">{{ resultadoVerificacion.pngBase64.length }} caracteres Base64</p>
+              <button class="btn primary small" @click="descargarPngVerificacion" type="button">
+                💾 Descargar PNG
+              </button>
             </div>
             
             <details v-if="resultadoVerificacion.raw" class="raw-detalle">
@@ -166,11 +166,11 @@
         <div class="modal-acciones">
           <button
             class="btn primary"
-            @click="verificarEncriptacion"
-            :disabled="!blobVerificar.trim() || verificando || !conectada"
+            @click="resultadoVerificacion ? descifrarOtro : verificarEncriptacion"
+            :disabled="!blobVerificar.trim() || verificando"
             type="button"
           >
-            {{ resultadoVerificacion ? '🔄 Descifrar otro' : '✅ Aceptar y descifrar' }}
+            {{ resultadoVerificacion ? '🔄 Descifrar otro' : '✅ Aceptar' }}
           </button>
           <button
             class="btn ghost"
@@ -181,6 +181,9 @@
             Cancelar
           </button>
         </div>
+        <p v-if="!conectada && !verificando && blobVerificar.trim()" class="aviso-tableta-desconectada">
+          ⚠️ Tableta STU-430 no conectada. Conecte la tableta e intente de nuevo.
+        </p>
       </div>
     </div>
 
@@ -247,7 +250,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick, shallowRef } from 'vue'
-import { registrarFirma } from '~/composables/api'
+import { registrarFirma, verificarDniUnico } from '~/composables/api'
 import wacom from '~/wacom'
 import {
   ANCHO, ALTO, AREA_FIRMA,
@@ -273,6 +276,14 @@ const protocolRef = shallowRef<any>(null)
 const handlerRef = shallowRef<any>(null)
 const usbRef = shallowRef<any>(null)
 const conectadoRef = ref(false)
+
+// Exponer referencias globalmente para descarga desde RegistroEmpleados
+if (import.meta.client) {
+  ;(window as any).__tabletRef = tabletRef
+  ;(window as any).__protocolRef = protocolRef
+  ;(window as any).__handlerRef = handlerRef
+}
+
 const dibujandoRef = ref(false)
 const botonRef = ref<string | null>(null)
 const lapizAbajoRef = ref(false)
@@ -454,68 +465,61 @@ const alMoverLapiz = (pen: any) => {
   }
 }
 
-const puntoDelRaton = (e: PointerEvent) => {
-  const canvas = tintaRef.value
-  if (!canvas) return null
+// Firma SOLO mediante tableta Wacom STU-430 (no ratón/touch)
+// Los eventos de ratón/touch están deshabilitados intencionalmente
 
-  const caja = canvas.getBoundingClientRect()
-  if (!caja.width || !caja.height) return null
-
-  return {
-    x: ((e.clientX - caja.left) / caja.width) * canvas.width,
-    y: ((e.clientY - caja.top) / caja.height) * canvas.height,
-  }
-}
+const puntoDelRaton = (e: PointerEvent) => null
 
 const alEmpezarTrazo = (e: PointerEvent) => {
-  if (fase.value !== PASO_FIRMA) return
-
-  const punto = puntoDelRaton(e)
-  const canvas = tintaRef.value
-  if (!punto || !canvas) return
-
-  const ctx = canvas.getContext('2d')!
-  ctx.beginPath()
-  ctx.moveTo(punto.x, punto.y)
-  ctx.lineTo(punto.x + 0.1, punto.y)
-  ctx.stroke()
-
-  ratonRef.value = true
-  hayFirma.value = true
+  // Deshabilitado: la firma solo se captura en la tableta física
+  if (import.meta.dev) console.log('Firma solo via tableta Wacom')
 }
 
-const alSeguirTrazo = (e: PointerEvent) => {
-  if (!ratonRef.value) return
+const alSeguirTrazo = (e: PointerEvent) => { /* deshabilitado */ }
 
-  const punto = puntoDelRaton(e)
-  const canvas = tintaRef.value
-  if (!punto || !canvas) return
-
-  canvas.getContext('2d')!.lineTo(punto.x, punto.y)
-  canvas.getContext('2d')!.stroke()
-}
-
-const soltarRaton = () => {
-  ratonRef.value = false
-}
+const soltarRaton = () => { ratonRef.value = false }
 
 const continuarAFirma = async () => {
   const nombreTxt = nombre.value.trim()
-  const dniTxt = dni.value.trim()
+  const dniTxt = dni.value.trim().toUpperCase().replace(/\s+/g, '')
+
+  console.log('continuarAFirma - dni.value:', dni.value)
+  console.log('continuarAFirma - dniTxt:', dniTxt)
 
   if (!nombreTxt || !dniTxt) {
     estado.value = '⚠️ Completa el nombre y el DNI antes de continuar.'
     return
   }
 
+  // Verificar DNI único ANTES de permitir firmar
+  estado.value = '🔍 Verificando DNI...'
+  try {
+    const resultado = await verificarDniUnico(dniTxt)
+    console.log('verificarDniUnico result:', resultado)
+    if (resultado.existe) {
+      const primerNombre = resultado.nombre?.split(' ')[0] || 'usuario'
+      estado.value = `❌ DNI ya registrado, por el usuario ${primerNombre}*****`
+      return
+    }
+  } catch (e: any) {
+    console.error('Error verificar DNI:', e)
+    estado.value = `⚠️ Error al verificar DNI: ${e.message}`
+    return
+  }
+
+  // Verificar que la tableta esté conectada
+  if (!conectada.value) {
+    estado.value = '❌ Tableta STU-430 no conectada. Conecte la tableta para continuar.'
+    return
+  }
+
+  dni.value = dniTxt
   limpiarTinta()
   avisoTableta.value = null
   fase.value = PASO_FIRMA
-  // La pantalla de firma se escribe antes de firmar: si se dibuja despues, la
-  // tableta borra el primer trazo que este haciendo el empleado.
   pantallaFirmaPintada.value = false
   await enviarPantalla()
-  estado.value = 'El empleado puede firmar en la tableta: BORRAR limpia, CANCELAR anula y GUARDAR guarda.'
+  estado.value = 'El empleado debe firmar en la tableta STU-430: BORRAR limpia, CANCELAR anula, GUARDAR guarda.'
 }
 
 const mostrarAvisoTemporal = (pasoAviso: string, duracion = 5000) => {
@@ -621,8 +625,17 @@ const cerrarModalDescifrado = () => {
   resultadoVerificacion.value = null
 }
 
+const limpiarResultadoVerificacion = () => {
+  resultadoVerificacion.value = null
+}
+
+const descifrarOtro = () => {
+  blobVerificar.value = ''
+  resultadoVerificacion.value = null
+}
+
 const verificarEncriptacion = async () => {
-  if (!blobVerificar.value.trim() || verificando.value || !conectada.value) return
+  if (!blobVerificar.value.trim() || verificando.value) return
 
   verificando.value = true
   resultadoVerificacion.value = null
@@ -636,18 +649,67 @@ const verificarEncriptacion = async () => {
       throw new Error('El blob no tiene el prefijo WACOM-STU430-')
     }
     
-    const jsonExterno = atob(blob.slice(PREFIJO.length))
-    const estructura = JSON.parse(jsonExterno)
+    // Función auxiliar para limpiar y validar base64
+    const limpiarBase64 = (str: string): string => {
+      // 1. Eliminar todos los espacios, saltos de línea, tabs, etc.
+      let cleaned = str.replace(/\s+/g, '')
+      // 2. Asegurar padding correcto (longitud múltiplo de 4)
+      const padding = cleaned.length % 4
+      if (padding > 0) {
+        cleaned += '='.repeat(4 - padding)
+      }
+      return cleaned
+    }
+    
+    // 1. Validar y decodificar estructura externa
+    const base64Part = blob.slice(PREFIJO.length)
+    console.log('Base64 part original length:', base64Part.length)
+    console.log('Base64 part preview (first 50):', base64Part.substring(0, 50))
+    console.log('Base64 part preview (last 50):', base64Part.substring(Math.max(0, base64Part.length - 50)))
+    
+    // Limpiar base64 (quitar whitespace, fix padding)
+    const base64Limpio = limpiarBase64(base64Part)
+    console.log('Base64 limpio length:', base64Limpio.length)
+    
+    // Verificar que sea base64 válido
+    const base64Regex = /^[A-Za-z0-9+/=]+$/
+    if (!base64Regex.test(base64Limpio)) {
+      console.error('El blob contiene caracteres no válidos para base64')
+      // Mostrar qué caracteres son inválidos
+      for (let i = 0; i < base64Limpio.length; i++) {
+        const c = base64Limpio[i]
+        if (!/^[A-Za-z0-9+/=]$/.test(c)) {
+          console.error(`Carácter inválido en posición ${i}: '${c}' (code: ${c.charCodeAt(0)})`)
+        }
+      }
+      throw new Error('El blob contiene caracteres inválidos. Verifique que pegó el blob completo desde la base de datos.')
+    }
+    
+    let jsonExterno: string
+    try {
+      jsonExterno = atob(base64Limpio)
+    } catch (e) {
+      console.error('Error decodificando base64 externo:', e)
+      throw new Error('Error al decodificar el blob: el contenido no es base64 válido. Verifique que copió el blob completo correctamente.')
+    }
+    
+    let estructura: any
+    try {
+      estructura = JSON.parse(jsonExterno)
+    } catch (e) {
+      console.error('Error parseando JSON externo:', e)
+      throw new Error('El blob decodificado no es JSON válido.')
+    }
+    
+    console.log('Estructura externa decodificada:', estructura)
     
     if (!estructura.nombre || !estructura.dni || !estructura.firma_encriptada_wacom || !estructura.fecha) {
       throw new Error('Estructura externa incompleta: faltan campos nombre, dni, firma_encriptada_wacom o fecha')
     }
     
     // 2. La firma encriptada viene en estructura.firma_encriptada_wacom
-    // Para Wacom real, esto es datos binarios encriptados por el dispositivo
-    // Necesitamos usar el SDK de la tableta para descifrar
-    
     const firmaEncriptada = estructura.firma_encriptada_wacom
+    console.log('firma_encriptada_wacom (primeros 100 chars):', firmaEncriptada.substring(0, 100))
     
     // Verificar si es formato simulado (JSON anidado) o real (binario Wacom)
     let resultado: any = {
@@ -659,19 +721,36 @@ const verificarEncriptacion = async () => {
     }
     
     if (firmaEncriptada.startsWith(PREFIJO)) {
+      console.log('Detectado formato con prefijo, intentando decodificar interno...')
       // Intentar decodificar como JSON anidado (formato simulado)
       try {
-        const jsonInterno = atob(firmaEncriptada.slice(PREFIJO.length))
+        const innerBase64 = firmaEncriptada.slice(PREFIJO.length)
+        console.log('Inner base64 original length:', innerBase64.length)
+        
+        // Limpiar base64 interno
+        const innerBase64Limpio = limpiarBase64(innerBase64)
+        console.log('Inner base64 limpio length:', innerBase64Limpio.length)
+        
+        // Validar base64 interno
+        if (!base64Regex.test(innerBase64Limpio)) {
+          throw new Error('Inner data no es base64 válido')
+        }
+        
+        const jsonInterno = atob(innerBase64Limpio)
+        console.log('JSON interno decodificado (primeros 200 chars):', jsonInterno.substring(0, 200))
         const paquete = JSON.parse(jsonInterno)
+        console.log('Paquete parseado:', paquete)
         
         if (paquete.firma_base64) {
           // Formato simulado - extraer PNG directamente
+          console.log('Formato simulado detectado, extrayendo firma_base64')
           resultado.pngBase64 = paquete.firma_base64
           resultado.raw = JSON.stringify(paquete, null, 2)
         } else {
           throw new Error('No hay firma_base64 en paquete interno')
         }
-      } catch (e) {
+      } catch (e: any) {
+        console.log('No es formato simulado (error:', e.message, '), tratando como real Wacom...')
         // No es JSON anidado - es binario encriptado real del Wacom
         // Usar la tableta conectada para descifrar
         resultado.raw = 'Datos binarios encriptados por Wacom STU-430 (requiere descifrado con tableta)'
@@ -685,30 +764,73 @@ const verificarEncriptacion = async () => {
             throw new Error('Tableta no disponible para descifrado')
           }
           
-          // Obtener los datos binarios encriptados
-          const encryptedData = atob(firmaEncriptada.slice(PREFIJO.length))
+          console.log('Tableta y protocolo disponibles, intentando descifrar...')
           
-          // Convertir a array de bytes para el SDK
+          // Para blobs reales Wacom, el inner data es base64 que decodifica a bytes encriptados
+          const innerBase64 = firmaEncriptada.slice(PREFIJO.length)
+          const innerBase64Limpio = limpiarBase64(innerBase64)
+          console.log('Inner base64 limpio length (real Wacom):', innerBase64Limpio.length)
+          
+          // Decodificar base64 a bytes binarios
+          let encryptedData: string
+          try {
+            encryptedData = atob(innerBase64Limpio)
+          } catch (e) {
+            console.error('Error decodificando inner base64:', e)
+            throw new Error('Error decodificando datos internos: base64 inválido')
+          }
+          console.log('Datos encriptados decodificados, longitud:', encryptedData.length)
+          
+          // Convertir a array de bytes para el SDK (usar charCodeAt para latin1)
           const bytes = new Uint8Array(encryptedData.length)
           for (let i = 0; i < encryptedData.length; i++) {
             bytes[i] = encryptedData.charCodeAt(i)
           }
           
-          // Usar Crypto del SDK para descifrar
-          // STU().Crypto tiene métodos para descifrado
-          const Crypto = STU().Crypto
+          console.log('Bytes array length:', bytes.length)
+          console.log('Primeros 20 bytes:', Array.from(bytes.slice(0, 20)))
           
-          // El Wacom usa clave pública/privada. La tableta tiene la clave privada.
-          // Llamar al método de descifrado del dispositivo
-          const decrypted = await Crypto.decrypt(bytes)
+          // Verificar STU y Crypto
+          const STUObj = STU()
+          console.log('STU object:', STUObj)
+          
+          if (!STUObj) {
+            throw new Error('STU no disponible - SDK no cargado')
+          }
+          
+          const Crypto = STUObj.Crypto
+          console.log('Crypto object:', Crypto)
+          
+          if (!Crypto) {
+            throw new Error('STU().Crypto no disponible en el SDK')
+          }
+          
+          if (typeof Crypto.decrypt !== 'function') {
+            console.log('Métodos disponibles en Crypto:', Object.getOwnPropertyNames(Crypto))
+            throw new Error('STU().Crypto.decrypt no es una función. Métodos: ' + Object.getOwnPropertyNames(Crypto).join(', '))
+          }
+          
+          console.log('Llamando a Crypto.decrypt...')
+          let decrypted: any
+          try {
+            decrypted = await Crypto.decrypt(bytes)
+          } catch (decryptError: any) {
+            console.error('Error en Crypto.decrypt:', decryptError)
+            throw new Error(`Crypto.decrypt falló: ${decryptError.message}`)
+          }
+          console.log('Resultado decrypt:', decrypted)
+          console.log('Tipo de resultado:', typeof decrypted, Array.isArray(decrypted) ? 'array' : 'other')
           
           if (decrypted) {
             // Convertir resultado a base64 PNG
             const pngBase64 = btoa(String.fromCharCode(...new Uint8Array(decrypted)))
             resultado.pngBase64 = pngBase64
             resultado.raw = `Descifrado con STU-430: ${decrypted.length} bytes -> PNG ${pngBase64.length} chars`
+          } else {
+            resultado.raw = 'Descifrado completado pero sin datos de resultado'
           }
         } catch (cryptoError: any) {
+          console.error('Error en descifrado con tableta:', cryptoError)
           resultado.raw = `Formato real Wacom detectado, pero error al descifrar: ${cryptoError.message}`
         }
       }
@@ -716,9 +838,11 @@ const verificarEncriptacion = async () => {
       resultado.raw = 'firma_encriptada_wacom sin prefijo WACOM-STU430-'
     }
     
+    console.log('Resultado final:', resultado)
     resultadoVerificacion.value = resultado
     
   } catch (e: any) {
+    console.error('Error general en verificarEncriptacion:', e)
     resultadoVerificacion.value = {
       ok: false,
       raw: `Error: ${e.message}`
@@ -728,9 +852,46 @@ const verificarEncriptacion = async () => {
   }
 }
 
-const onDniInput = (e: Event) => {
-  dni.value = (e.target as HTMLInputElement).value.replace(/\D/g, '')
+const descargarPngVerificacion = () => {
+  const base64 = resultadoVerificacion.value?.pngBase64
+  if (!base64) return
+  
+  const byteCharacters = atob(base64)
+  const byteNumbers = new Array(byteCharacters.length)
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i)
+  }
+  const byteArray = new Uint8Array(byteNumbers)
+  const blob = new Blob([byteArray], { type: 'image/png' })
+  
+  const url = URL.createObjectURL(blob)
+  const enlace = document.createElement('a')
+  enlace.href = url
+  const nombre = (resultadoVerificacion.value?.nombre || 'firma').replace(/[^\w\s.-]/g, '').trim()
+  enlace.download = `firma_${resultadoVerificacion.value?.dni || 'desconocida'}_${nombre}.png`
+  document.body.appendChild(enlace)
+  enlace.click()
+  enlace.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+const onDniInput = (e: Event) => {
+  const newValue = (e.target as HTMLInputElement).value.replace(/\D/g, '')
+  dni.value = newValue
+  console.log('onDniInput - new dni.value:', dni.value)
+  // Limpiar error de DNI duplicado al escribir nuevo DNI
+  if (estado.value.includes('DNI ya registrado') || estado.value.includes('Error al verificar DNI')) {
+    estado.value = 'Escriba el nombre y el DNI del siguiente empleado.'
+  }
+}
+
+// Watcher adicional: limpiar error siempre que cambie el DNI (más robusto)
+watch(() => dni.value, (newDni) => {
+  console.log('watch dni - new value:', newDni)
+  if (estado.value.includes('DNI ya registrado') || estado.value.includes('Error al verificar DNI')) {
+    estado.value = 'Escriba el nombre y el DNI del siguiente empleado.'
+  }
+})
 
 const accionesRef = { current: { boton: (clave: string) => {
   const accion = accionDeBoton(clave)

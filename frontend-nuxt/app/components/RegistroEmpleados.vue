@@ -217,7 +217,108 @@ const descargarPng = async (firma: any) => {
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   } catch (e: any) {
     console.error('Error al descargar PNG:', e)
+    
+    // Si falla el backend, intentar descifrar con tableta conectada (formato real Wacom)
+    if (e.message.includes('No se pudo extraer') || e.message.includes('Error al decodificar')) {
+      try {
+        await descargarPngConTableta(firma)
+        return
+      } catch (tabletError: any) {
+        alert('Error al descargar la imagen: ' + tabletError.message)
+        return
+      }
+    }
+    
     alert('Error al descargar la imagen: ' + e.message)
   }
+}
+
+const descargarPngConTableta = async (firma: any) => {
+  const STU = (window as any).STU
+  if (!STU) {
+    throw new Error('SDK de Wacom no disponible. Instale SigCaptX en Windows.')
+  }
+
+  const tabletRef = (window as any).__tabletRef
+  const protocolRef = (window as any).__protocolRef
+  
+  const tablet = tabletRef || (STU().tablet)
+  const protocol = protocolRef || (STU().Protocol)
+  
+  if (!tablet || !protocol) {
+    throw new Error('Tableta STU-430 no conectada. Conecte la tableta e intente de nuevo.')
+  }
+
+  const wacomBlob = firma.wacom_blob
+  const PREFIJO = 'WACOM-STU430-'
+  
+  if (!wacomBlob.startsWith(PREFIJO)) {
+    throw new Error('El blob no tiene el prefijo WACOM-STU430-')
+  }
+
+  const jsonExterno = atob(wacomBlob.slice(PREFIJO.length))
+  const estructura = JSON.parse(jsonExterno)
+
+  if (!estructura.firma_encriptada_wacom) {
+    throw new Error('Estructura Wacom incompleta: falta firma_encriptada_wacom')
+  }
+
+  const firmaEncriptada = estructura.firma_encriptada_wacom
+  
+  // Verificar si es formato real (no JSON anidado)
+  if (firmaEncriptada.startsWith(PREFIJO)) {
+    // Podría ser simulado - intentar extraer directo
+    try {
+      const jsonInterno = atob(firmaEncriptada.slice(PREFIJO.length))
+      const paquete = JSON.parse(jsonInterno)
+      if (paquete.firma_base64) {
+        // Formato simulado - descargar directo
+        descargarBase64ComoPng(paquete.firma_base64, firma)
+        return
+      }
+    } catch {
+      // No es JSON anidado - es binario real Wacom
+    }
+  }
+
+  // Formato real Wacom - descifrar con tableta
+  const encryptedData = atob(firmaEncriptada.slice(PREFIJO.length))
+  const bytes = new Uint8Array(encryptedData.length)
+  for (let i = 0; i < encryptedData.length; i++) {
+    bytes[i] = encryptedData.charCodeAt(i)
+  }
+
+  const Crypto = STU().Crypto
+  const decrypted = await Crypto.decrypt(bytes)
+  
+  if (!decrypted) {
+    throw new Error('No se pudo descifrar la firma con la tableta.')
+  }
+
+  const pngBase64 = btoa(String.fromCharCode(...new Uint8Array(decrypted)))
+  descargarBase64ComoPng(pngBase64, firma)
+}
+
+const descargarBase64ComoPng = (base64: string, firma: any) => {
+  const pngBinario = base64ToBlob(base64, 'image/png')
+  const url = URL.createObjectURL(pngBinario)
+  const enlace = document.createElement('a')
+  enlace.href = url
+  const nombre = (firma.nombre || 'firma').replace(/[^\w\s.-]/g, '').trim()
+  enlace.download = `firma_${firma.id}_${nombre}.png`
+  document.body.appendChild(enlace)
+  enlace.click()
+  enlace.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+const base64ToBlob = (base64: string, mimeType: string): Blob => {
+  const byteCharacters = atob(base64)
+  const byteNumbers = new Array(byteCharacters.length)
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i)
+  }
+  const byteArray = new Uint8Array(byteNumbers)
+  return new Blob([byteArray], { type: mimeType })
 }
 </script>
